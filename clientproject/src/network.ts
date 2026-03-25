@@ -1,4 +1,7 @@
 const isLocalHost = (hostname: string) => hostname === 'localhost' || hostname === '127.0.0.1'
+const defaultHostedApiOrigins = ['https://real-time-collab-api.onrender.com']
+const renderWakeRetryCount = 10
+const renderWakeRetryDelayMs = 5000
 
 const looksLikeHostname = (value: string) =>
   !value.startsWith('http://') &&
@@ -80,6 +83,8 @@ const getRenderDerivedApiBaseUrls = () => {
   return Array.from(candidates)
 }
 
+const getBundledFallbackApiBaseUrls = () => defaultHostedApiOrigins.map((origin) => toApiBaseUrl(origin))
+
 const buildApiBaseCandidates = () => {
   if (import.meta.env.DEV) {
     return ['/api']
@@ -89,6 +94,7 @@ const buildApiBaseCandidates = () => {
   return unique([
     ...(configured ? [configured] : []),
     ...getRenderDerivedApiBaseUrls(),
+    ...getBundledFallbackApiBaseUrls(),
     '/api',
   ])
 }
@@ -113,22 +119,28 @@ const isHealthPayload = (payload: unknown) => {
   return 'success' in payload && ('data' in payload || 'error' in payload)
 }
 
-const canReachApiBaseUrl = async (apiBaseUrl: string) => {
+const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms))
+
+const probeApiBaseUrl = async (apiBaseUrl: string) => {
   try {
     const response = await fetch(getHealthUrl(apiBaseUrl), {
       method: 'GET',
       credentials: 'include',
     })
 
+    if (response.status === 503 && response.headers.get('x-render-routing') === 'suspend') {
+      return 'waking' as const
+    }
+
     const contentType = response.headers.get('content-type') ?? ''
     if (!contentType.includes('application/json')) {
-      return false
+      return 'unreachable' as const
     }
 
     const payload = await response.json().catch(() => null)
-    return isHealthPayload(payload)
+    return isHealthPayload(payload) ? ('ready' as const) : ('unreachable' as const)
   } catch {
-    return false
+    return 'unreachable' as const
   }
 }
 
@@ -151,9 +163,19 @@ export const ensureApiBaseUrl = async () => {
     for (const candidate of buildApiBaseCandidates()) {
       activeApiBaseUrl = candidate
 
-      if (await canReachApiBaseUrl(candidate)) {
-        confirmedApiBaseUrl = candidate
-        return candidate
+      for (let attempt = 0; attempt < renderWakeRetryCount; attempt += 1) {
+        const probeResult = await probeApiBaseUrl(candidate)
+
+        if (probeResult === 'ready') {
+          confirmedApiBaseUrl = candidate
+          return candidate
+        }
+
+        if (probeResult !== 'waking') {
+          break
+        }
+
+        await sleep(renderWakeRetryDelayMs)
       }
     }
 

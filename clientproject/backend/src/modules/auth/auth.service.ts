@@ -4,6 +4,7 @@ import {prisma} from '../../prisma/client.js'
 import {comparePassword} from '../../lib/password.js'
 import {badRequest, conflict, unauthorized} from '../../lib/errors.js'
 import {env, isProduction} from '../../config/env.js'
+import { demoEmails, ensureDemoUsers } from '../../lib/demo-workspace.js'
 import {
   hashToken,
   signAccessToken,
@@ -100,8 +101,14 @@ export const login = async(
     email: string,
     password: string,
 )=>{
+    const normalizedEmail = email.toLowerCase()
+
+    if (demoEmails.has(normalizedEmail)) {
+        await ensureDemoUsers(prisma)
+    }
+
     const user = await prisma.user.findUnique({
-        where:{email : email.toLowerCase()},
+        where:{email : normalizedEmail},
     })
     
     if(!user || !user.isActive){

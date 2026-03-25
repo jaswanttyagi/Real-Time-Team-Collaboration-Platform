@@ -1,6 +1,7 @@
 import http from 'node:http'
 import { app } from './app.js'
 import { env } from './config/env.js'
+import { ensureDemoWorkspace } from './lib/demo-workspace.js'
 import { prisma } from './prisma/client.js'
 import { registerOverdueJob } from './jobs/overdue.job.js'
 import { initializeSocket } from './socket/index.js'
@@ -10,6 +11,7 @@ const server = http.createServer(app)
 const boot = async () => {
   await prisma.$connect()
   await prisma.user.count()
+  await ensureDemoWorkspace(prisma)
 
   initializeSocket(server)
   registerOverdueJob()
