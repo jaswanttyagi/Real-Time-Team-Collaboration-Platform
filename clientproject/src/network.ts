@@ -1,7 +1,17 @@
 const isLocalHost = (hostname: string) => hostname === 'localhost' || hostname === '127.0.0.1'
 
+const looksLikeHostname = (value: string) =>
+  !value.startsWith('http://') &&
+  !value.startsWith('https://') &&
+  !value.startsWith('/') &&
+  /^[a-zA-Z0-9.-]+(?::\d+)?$/.test(value)
+
 const normalizeOriginLikeUrl = (value: string) => {
-  const url = new URL(value, window.location.origin)
+  const normalizedInput = looksLikeHostname(value)
+    ? `${window.location.protocol === 'https:' ? 'https' : 'http'}://${value}`
+    : value
+
+  const url = new URL(normalizedInput, window.location.origin)
 
   if (
     window.location.protocol === 'https:' &&

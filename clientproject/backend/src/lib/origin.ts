@@ -1,17 +1,28 @@
 import { env, isProduction } from '../config/env.js'
 
+const looksLikeHostname = (value: string) =>
+  !value.startsWith('http://') &&
+  !value.startsWith('https://') &&
+  !value.startsWith('/') &&
+  /^[a-zA-Z0-9.-]+(?::\d+)?$/.test(value)
+
 const normalizeOrigin = (value: string) => {
+  const normalizedInput =
+    looksLikeHostname(value) ? `${isProduction ? 'https' : 'http'}://${value}` : value
+
   try {
-    return new URL(value).origin
+    return new URL(normalizedInput).origin
   } catch {
-    return value.trim().replace(/\/+$/, '')
+    return normalizedInput.trim().replace(/\/+$/, '')
   }
 }
 
 const configuredOrigins = [
   env.CLIENT_URL,
   ...(env.CLIENT_URLS?.split(',').map((item) => item.trim()).filter(Boolean) ?? []),
-].map(normalizeOrigin)
+]
+  .filter((value): value is string => Boolean(value))
+  .map(normalizeOrigin)
 
 export const isAllowedOrigin = (origin?: string) => {
   if (!origin) {
