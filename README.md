@@ -22,9 +22,6 @@
 👉 Frontend:  
 https://real-time-team-collaboration-platfo.vercel.app  
 
-👉 GitHub Repo:  
-https://github.com/jaswanttyagi/Real-Time-Team-Collaboration-Platform  
-
 ---
 
 # 🚀 Overview
