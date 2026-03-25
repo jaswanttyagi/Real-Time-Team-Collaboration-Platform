@@ -1,5 +1,5 @@
 import axios, { AxiosError, type AxiosRequestConfig } from 'axios'
-import { resolveApiBaseUrl } from './network'
+import { ensureApiBaseUrl, resolveApiBaseUrl } from './network'
 import type {
   Activity,
   AdminDashboard,
@@ -17,10 +17,8 @@ import type {
   User,
 } from './types'
 
-const apiBaseURL = resolveApiBaseUrl()
-
 const apiClient = axios.create({
-  baseURL: apiBaseURL,
+  baseURL: resolveApiBaseUrl(),
   withCredentials: true,
 })
 
@@ -83,6 +81,7 @@ apiClient.interceptors.response.use(
 )
 
 const unwrap = async <T>(config: AxiosRequestConfig) => {
+  apiClient.defaults.baseURL = await ensureApiBaseUrl()
   const response = await apiClient.request<ApiEnvelope<T>>(config)
   return response.data.data
 }
@@ -90,7 +89,7 @@ const unwrap = async <T>(config: AxiosRequestConfig) => {
 export const getErrorMessage = (error: unknown) => {
   if (axios.isAxiosError(error)) {
     if (!error.response) {
-      return `Cannot reach the backend at ${apiBaseURL}. Check that the API is running, the URL is correct, and the browser origin is allowed.`
+      return `Cannot reach the backend at ${resolveApiBaseUrl()}. Check that the API is running, the URL is correct, and the browser origin is allowed.`
     }
 
     const responseData = error.response?.data as

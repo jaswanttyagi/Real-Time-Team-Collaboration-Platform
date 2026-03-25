@@ -11,7 +11,7 @@ import {
 import { useQueryClient } from '@tanstack/react-query'
 import { io, type Socket } from 'socket.io-client'
 import { useAuth } from './auth'
-import { resolveSocketUrl } from './network'
+import { ensureSocketUrl } from './network'
 import type { Activity } from './types'
 
 type SocketContextValue = {
@@ -23,8 +23,6 @@ type SocketContextValue = {
 }
 
 const SocketContext = createContext<SocketContextValue | null>(null)
-
-const socketUrl = resolveSocketUrl()
 
 const mergeActivities = (current: Activity[], nextBatch: Activity[]) => {
   const map = new Map<string, Activity>()
@@ -65,64 +63,80 @@ export const SocketProvider = ({ children }: PropsWithChildren) => {
       return
     }
 
-    const socket = io(socketUrl, {
-      auth: {
-        token: accessToken,
-      },
-      path: '/socket.io',
-    })
+    let isCancelled = false
+    let socket: Socket | null = null
 
-    socketRef.current = socket
+    const connectSocket = async () => {
+      const socketUrl = await ensureSocketUrl()
+      if (isCancelled) {
+        return
+      }
 
-    socket.on('connect', () => {
-      const since = localStorage.getItem('clientproject:last-activity-at') ?? undefined
-      socket.emit('activity:sync', { since })
-    })
+      socket = io(socketUrl, {
+        auth: {
+          token: accessToken,
+        },
+        path: '/socket.io',
+      })
 
-    socket.on('activity:new', (activity: Activity) => {
-      ingestActivities([activity])
-      void queryClient.invalidateQueries({ queryKey: ['activities'] })
-      void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
-      void queryClient.invalidateQueries({ queryKey: ['tasks'] })
-      void queryClient.invalidateQueries({ queryKey: ['projects'] })
-    })
+      socketRef.current = socket
 
-    socket.on('activity:missed', (activities: Activity[]) => {
-      ingestActivities(activities)
-      void queryClient.invalidateQueries({ queryKey: ['activities'] })
-    })
+      socket.on('connect', () => {
+        const since = localStorage.getItem('clientproject:last-activity-at') ?? undefined
+        socket?.emit('activity:sync', { since })
+      })
 
-    socket.on('notification:new', () => {
-      void queryClient.invalidateQueries({ queryKey: ['notifications'] })
-    })
+      socket.on('activity:new', (activity: Activity) => {
+        ingestActivities([activity])
+        void queryClient.invalidateQueries({ queryKey: ['activities'] })
+        void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+        void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+        void queryClient.invalidateQueries({ queryKey: ['projects'] })
+      })
 
-    socket.on('notification:unread_count', (payload: { unreadCount: number }) => {
-      setUnreadCount(payload.unreadCount)
-    })
+      socket.on('activity:missed', (activities: Activity[]) => {
+        ingestActivities(activities)
+        void queryClient.invalidateQueries({ queryKey: ['activities'] })
+      })
 
-    socket.on('project:updated', () => {
-      void queryClient.invalidateQueries({ queryKey: ['projects'] })
-      void queryClient.invalidateQueries({ queryKey: ['project'] })
-      void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
-      void queryClient.invalidateQueries({ queryKey: ['notifications'] })
-    })
+      socket.on('notification:new', () => {
+        void queryClient.invalidateQueries({ queryKey: ['notifications'] })
+      })
 
-    socket.on('project:deleted', () => {
-      void queryClient.invalidateQueries({ queryKey: ['projects'] })
-      void queryClient.invalidateQueries({ queryKey: ['project'] })
-      void queryClient.invalidateQueries({ queryKey: ['tasks'] })
-      void queryClient.invalidateQueries({ queryKey: ['activities'] })
-      void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
-      void queryClient.invalidateQueries({ queryKey: ['notifications'] })
-    })
+      socket.on('notification:unread_count', (payload: { unreadCount: number }) => {
+        setUnreadCount(payload.unreadCount)
+      })
 
-    socket.on('presence:update', (payload: { onlineUsers: number }) => {
-      setOnlineUsers(payload.onlineUsers)
-    })
+      socket.on('project:updated', () => {
+        void queryClient.invalidateQueries({ queryKey: ['projects'] })
+        void queryClient.invalidateQueries({ queryKey: ['project'] })
+        void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+        void queryClient.invalidateQueries({ queryKey: ['notifications'] })
+      })
+
+      socket.on('project:deleted', () => {
+        void queryClient.invalidateQueries({ queryKey: ['projects'] })
+        void queryClient.invalidateQueries({ queryKey: ['project'] })
+        void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+        void queryClient.invalidateQueries({ queryKey: ['activities'] })
+        void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+        void queryClient.invalidateQueries({ queryKey: ['notifications'] })
+      })
+
+      socket.on('presence:update', (payload: { onlineUsers: number }) => {
+        setOnlineUsers(payload.onlineUsers)
+      })
+    }
+
+    void connectSocket()
 
     return () => {
-      socket.disconnect()
-      socketRef.current = null
+      isCancelled = true
+      socket?.disconnect()
+
+      if (socketRef.current === socket) {
+        socketRef.current = null
+      }
     }
   }, [accessToken, ingestActivities, isAuthenticated, queryClient, user])
 
