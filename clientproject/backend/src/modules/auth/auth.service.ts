@@ -15,7 +15,7 @@ import { hashPassword } from '../../lib/password.js'
 
 const refreshCookieOptions : CookieOptions={
     httpOnly: true,
-    sameSite:'lax',
+    sameSite: isProduction ? 'none' : 'lax',
     secure: isProduction,
     path:'/', 
 }

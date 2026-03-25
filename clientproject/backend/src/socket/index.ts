@@ -2,6 +2,7 @@ import type { Server as HttpServer } from 'node:http'
 import { type Role, Prisma } from '@prisma/client'
 import { Server } from 'socket.io'
 import { env } from '../config/env.js'
+import { isAllowedOrigin } from '../lib/origin.js'
 import { prisma } from '../prisma/client.js'
 import { verifyAccessToken } from '../lib/jwt.js'
 import { addPresence, getOnlineUsersCount, removePresence } from './presence.js'
@@ -154,27 +155,6 @@ export const emitProjectDeleted = (
 }
 
 export const initializeSocket = (server: HttpServer) => {
-  const isAllowedOrigin = (origin?: string) => {
-    if (!origin) {
-      return true
-    }
-
-    if (origin === env.CLIENT_URL) {
-      return true
-    }
-
-    if (env.NODE_ENV !== 'production') {
-      try {
-        const { protocol } = new URL(origin)
-        return protocol === 'http:' || protocol === 'https:'
-      } catch {
-        return false
-      }
-    }
-
-    return false
-  }
-
   io = new Server(server, {
     cors: {
       origin(origin, callback) {

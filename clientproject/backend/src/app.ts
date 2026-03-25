@@ -3,6 +3,7 @@ import cors from 'cors'
 import express from 'express'
 import rateLimit from 'express-rate-limit'
 import { env } from './config/env.js'
+import { isAllowedOrigin } from './lib/origin.js'
 import { prisma } from './prisma/client.js'
 import { authRouter } from './modules/auth/auth.routes.js'
 import { usersRouter } from './modules/users/users.routes.js'
@@ -16,27 +17,6 @@ import { errorMiddleware } from './middleware/error.middleware.js'
 import { notFoundMiddleware } from './middleware/not-found.middleware.js'
 
 export const app = express()
-
-const isAllowedOrigin = (origin?: string) => {
-  if (!origin) {
-    return true
-  }
-
-  if (origin === env.CLIENT_URL) {
-    return true
-  }
-
-  if (env.NODE_ENV !== 'production') {
-    try {
-      const { protocol } = new URL(origin)
-      return protocol === 'http:' || protocol === 'https:'
-    } catch {
-      return false
-    }
-  }
-
-  return false
-}
 
 app.use(
   cors({

@@ -247,7 +247,8 @@ Use the passwords you set in:
 
 - `PORT`: Backend server port. Default local value: `4000`
 - `NODE_ENV`: Runtime environment, typically `development` for local setup
-- `CLIENT_URL`: Allowed frontend origin for CORS and Socket.io
+- `CLIENT_URL`: Primary allowed frontend origin for CORS and Socket.io
+- `CLIENT_URLS`: Optional extra allowed frontend origins as a comma-separated list for multi-environment or Render deployments
 - `DATABASE_URL`: PostgreSQL connection string used by Prisma and the API
 - `JWT_ACCESS_SECRET`: Secret used to sign and verify access tokens
 - `JWT_REFRESH_SECRET`: Secret used to sign and verify refresh tokens
@@ -372,6 +373,7 @@ Create PMs, developers, clients, and projects inside each admin workspace after 
 - Secrets live in `.env`
 - Passwords are hashed with bcrypt
 - Refresh tokens are hashed in the sessions table
+- In production, refresh cookies use `SameSite=None` and `Secure` so split frontend/backend deployments can keep sessions working
 - Role checks happen in the API, not just the UI
 - Validation uses Zod
 - Login route is rate-limited
