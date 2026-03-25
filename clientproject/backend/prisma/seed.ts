@@ -76,6 +76,7 @@ const ensureUser = async (input : {
     email : string
     role : Role
     password : string
+    workspaceAdminId?: string | null
 })=>{
     const passwordHash = await bcrypt.hash(input.password, 10)
         return prisma.user.upsert({
@@ -84,6 +85,7 @@ const ensureUser = async (input : {
                 name : input.name,
                 role: input.role,
                 passwordHash,
+                workspaceAdminId: input.workspaceAdminId ?? null,
                 isActive: true,
             },
             create: {
@@ -91,6 +93,7 @@ const ensureUser = async (input : {
                 email: input.email,
                 role: input.role,
                 passwordHash,
+                workspaceAdminId: input.workspaceAdminId ?? null,
                 isActive: true,
             },
     })
@@ -304,18 +307,21 @@ async function runSeed() {
         email: 'admin@agency.local',
         role: Role.ADMIN,
         password: seedPasswords.admin,
+        workspaceAdminId: null,
     })
     const pm = await ensureUser({
     name: 'Rohan Mehta',
     email: 'pm1@agency.local',
     role: Role.PM,
     password: seedPasswords.pm,
+    workspaceAdminId: admin.id,
   })
   const developer = await ensureUser({
     name: 'Ravi Nair',
     email: 'dev1@agency.local',
     role: Role.DEVELOPER,
     password: seedPasswords.developer,
+    workspaceAdminId: admin.id,
   })
   const client = await ensureClient(admin.id)
   const project = await ensureProject({

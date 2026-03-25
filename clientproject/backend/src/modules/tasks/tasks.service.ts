@@ -9,6 +9,7 @@ import {
 import { prisma } from '../../prisma/client.js'
 import { badRequest, forbidden, notFound } from '../../lib/errors.js'
 import { getLimit, getPage } from '../../lib/pagination.js'
+import type { WorkspaceUser } from '../../lib/workspace.js'
 import { createTaskStatusActivity } from '../activities/activities.service.js'
 import { createInAppNotification } from '../notifications/notifications.service.js'
 import { emitActivity } from '../../socket/index.js'
@@ -101,7 +102,7 @@ const computeOverdueState = (dueDate?: Date | null, status?: TaskStatus) => {
       }
 }
 
-const ensureDeveloper = async (developerId: string | null | undefined) => {
+const ensureDeveloper = async (developerId: string | null | undefined, scopeAdminId: string) => {
   if (!developerId) {
     return null
   }
@@ -111,6 +112,7 @@ const ensureDeveloper = async (developerId: string | null | undefined) => {
       id: developerId,
       role: Role.DEVELOPER,
       isActive: true,
+      workspaceAdminId: scopeAdminId,
     },
     select: {
       id: true,
@@ -127,13 +129,14 @@ const ensureDeveloper = async (developerId: string | null | undefined) => {
   return user
 }
 
-const getProjectScope = async (projectId: string, user: { id: string; role: Role }) => {
+const getProjectScope = async (projectId: string, user: WorkspaceUser) => {
   const project = await prisma.project.findUnique({
     where: { id: projectId },
     include: {
       client: {
         select: {
           name: true,
+          createdById: true,
         },
       },
       createdBy: {
@@ -150,6 +153,10 @@ const getProjectScope = async (projectId: string, user: { id: string; role: Role
     throw notFound('Project not found')
   }
 
+  if (user.role === Role.ADMIN && project.client.createdById !== user.scopeAdminId) {
+    throw forbidden('You can only manage tasks inside your own admin workspace')
+  }
+
   // PM sirf apne created projects ke andar task manage kar skta hai
   if (user.role === Role.PM && project.createdById !== user.id) {
     throw forbidden('You can only manage tasks inside projects you created')
@@ -158,9 +165,16 @@ const getProjectScope = async (projectId: string, user: { id: string; role: Role
   return project
 }
 
-const getTaskAccessWhere = (taskId: string, user: { id: string; role: Role }) => {
+const getTaskAccessWhere = (taskId: string, user: WorkspaceUser) => {
   if (user.role === Role.ADMIN) {
-    return { id: taskId }
+    return {
+      id: taskId,
+      project: {
+        client: {
+          createdById: user.scopeAdminId,
+        },
+      },
+    }
   }
 
   if (user.role === Role.PM) {
@@ -178,7 +192,7 @@ const getTaskAccessWhere = (taskId: string, user: { id: string; role: Role }) =>
   }
 }
 
-const getTaskForAccess = async (taskId: string, user: { id: string; role: Role }) => {
+const getTaskForAccess = async (taskId: string, user: WorkspaceUser) => {
   const task = await prisma.task.findFirst({
     where: getTaskAccessWhere(taskId, user),
     select: taskSelect,
@@ -192,7 +206,7 @@ const getTaskForAccess = async (taskId: string, user: { id: string; role: Role }
 }
 
 const buildTaskWhere = (
-  user: { id: string; role: Role },
+  user: WorkspaceUser,
   query: { projectId?: string; status?: TaskStatus; priority?: TaskPriority; from?: string; to?: string },
 ): Prisma.TaskWhereInput => {
   const where: Prisma.TaskWhereInput = {}
@@ -218,6 +232,14 @@ const buildTaskWhere = (
 
     if (query.to) {
       where.dueDate.lte = new Date(query.to)
+    }
+  }
+
+  if (user.role === Role.ADMIN) {
+    where.project = {
+      client: {
+        createdById: user.scopeAdminId,
+      },
     }
   }
 
@@ -266,22 +288,13 @@ const createDeveloperProgressNotifications = async (input: {
   taskNumber: number
   projectName: string
   projectManagerId: string
+  scopeAdminId: string
   oldStatus: TaskStatus
   newStatus: TaskStatus
 }) => {
-  const admins = await prisma.user.findMany({
-    where: {
-      role: Role.ADMIN,
-      isActive: true,
-    },
-    select: {
-      id: true,
-    },
-  })
-
   const recipientIds = [
     input.projectManagerId,
-    ...admins.map((admin) => admin.id),
+    input.scopeAdminId,
   ]
 
   const title =
@@ -306,7 +319,7 @@ const createDeveloperProgressNotifications = async (input: {
 }
 
 export const listTasks = async (
-  user: { id: string; role: Role },
+  user: WorkspaceUser,
   query: {
     projectId?: string
     status?: TaskStatus
@@ -369,12 +382,12 @@ export const listTasks = async (
   }
 }
 
-export const getTaskById = async (taskId: string, user: { id: string; role: Role }) =>
+export const getTaskById = async (taskId: string, user: WorkspaceUser) =>
   getTaskForAccess(taskId, user)
 
 export const createProjectTask = async (
   projectId: string,
-  user: { id: string; role: Role; name: string; email: string },
+  user: WorkspaceUser,
   input: {
     title: string
     description?: string
@@ -385,7 +398,7 @@ export const createProjectTask = async (
   },
 ) => {
   const project = await getProjectScope(projectId, user)
-  const developer = await ensureDeveloper(input.assignedDeveloperId)
+  const developer = await ensureDeveloper(input.assignedDeveloperId, user.scopeAdminId)
   const dueDate = input.dueDate ? new Date(input.dueDate) : null
   const overdueState = computeOverdueState(dueDate, input.status)
 
@@ -419,7 +432,7 @@ export const createProjectTask = async (
 
 export const updateTask = async (
   taskId: string,
-  user: { id: string; role: Role; name: string; email: string },
+  user: WorkspaceUser,
   input: {
     title?: string
     description?: string | null
@@ -437,7 +450,7 @@ export const updateTask = async (
 
   const nextDeveloper =
     input.assignedDeveloperId !== undefined
-      ? await ensureDeveloper(input.assignedDeveloperId)
+      ? await ensureDeveloper(input.assignedDeveloperId, user.scopeAdminId)
       : existingTask.assignedDeveloper
 
   const dueDate =
@@ -519,7 +532,7 @@ export const updateTask = async (
 
 export const updateTaskStatus = async (
   taskId: string,
-  user: { id: string; role: Role; name: string; email: string },
+  user: WorkspaceUser,
   status: TaskStatus,
 ) => {
   const existingTask = await prisma.task.findFirst({
@@ -532,6 +545,7 @@ export const updateTaskStatus = async (
               id: true,
               name: true,
               email: true,
+              workspaceAdminId: true,
             },
           },
         },
@@ -588,7 +602,7 @@ export const updateTaskStatus = async (
     }
   })
 
-  emitActivity(activity, task.projectId, task.assignedDeveloperId, task.project.createdById)
+  emitActivity(activity, user.scopeAdminId, task.assignedDeveloperId, task.project.createdById)
 
   if (user.role === Role.DEVELOPER) {
     await createDeveloperProgressNotifications({
@@ -597,6 +611,7 @@ export const updateTaskStatus = async (
       taskNumber: existingTask.taskNumber,
       projectName: existingTask.project.name,
       projectManagerId: existingTask.project.createdById,
+      scopeAdminId: existingTask.project.createdBy.workspaceAdminId ?? user.scopeAdminId,
       oldStatus: existingTask.status,
       newStatus: status,
     })

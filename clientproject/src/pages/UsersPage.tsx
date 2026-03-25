@@ -7,7 +7,7 @@ import type { Role } from '../types'
 const defaultForm = {
   name: '',
   email: '',
-  role: 'DEVELOPER' as Role,
+  role: 'PM' as Role,
   tempPassword: '',
 }
 
@@ -58,6 +58,7 @@ export const UsersPage = () => {
           <div className="panel-header">
             <h3>Create User</h3>
           </div>
+          <p className="muted">Add PM and User accounts for this admin workspace.</p>
           <label>
             Full name
             <input
@@ -83,7 +84,6 @@ export const UsersPage = () => {
                 setForm((current) => ({ ...current, role: event.target.value as Role }))
               }
             >
-              <option value="ADMIN">Admin</option>
               <option value="PM">Project Manager</option>
               <option value="DEVELOPER">User</option>
             </select>
@@ -130,31 +130,36 @@ export const UsersPage = () => {
                   </p>
                 </div>
                 <div className="inline-actions">
-                  <select
-                    value={user.role}
-                    onChange={(event) =>
-                      updateMutation.mutate({
-                        id: user.id,
-                        payload: { role: event.target.value as Role },
-                      })
-                    }
-                  >
-                    <option value="ADMIN">Admin</option>
-                    <option value="PM">PM</option>
-                    <option value="DEVELOPER">User</option>
-                  </select>
-                  <button
-                    className="ghost-button"
-                    type="button"
-                    onClick={() =>
-                      updateMutation.mutate({
-                        id: user.id,
-                        payload: { isActive: !user.isActive },
-                      })
-                    }
-                  >
-                    {user.isActive ? 'Deactivate' : 'Activate'}
-                  </button>
+                  {user.role === 'ADMIN' ? (
+                    <span className="muted">Workspace owner</span>
+                  ) : (
+                    <>
+                      <select
+                        value={user.role}
+                        onChange={(event) =>
+                          updateMutation.mutate({
+                            id: user.id,
+                            payload: { role: event.target.value as Role },
+                          })
+                        }
+                      >
+                        <option value="PM">PM</option>
+                        <option value="DEVELOPER">User</option>
+                      </select>
+                      <button
+                        className="ghost-button"
+                        type="button"
+                        onClick={() =>
+                          updateMutation.mutate({
+                            id: user.id,
+                            payload: { isActive: !user.isActive },
+                          })
+                        }
+                      >
+                        {user.isActive ? 'Deactivate' : 'Activate'}
+                      </button>
+                    </>
+                  )}
                 </div>
               </article>
             ))}

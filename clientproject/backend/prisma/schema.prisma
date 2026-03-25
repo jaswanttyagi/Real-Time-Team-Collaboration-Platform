@@ -59,9 +59,12 @@ model User {
   email           String         @unique
   passwordHash    String
   role            Role
+  workspaceAdminId String?
   isActive        Boolean        @default(true)
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
+  workspaceAdmin  User?          @relation("AdminWorkspace", fields: [workspaceAdminId], references: [id])
+  workspaceMembers User[]        @relation("AdminWorkspace")
   createdClients  Client[]
   createdProjects Project[]      @relation("ProjectCreator")
   assignedProjects Project[]     @relation("ProjectAssignee")
@@ -73,6 +76,7 @@ model User {
   sessions        Session[]
 
   @@index([role])
+  @@index([workspaceAdminId])
 }
 
 model Client {

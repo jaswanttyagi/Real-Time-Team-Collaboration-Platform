@@ -2,40 +2,24 @@ import { useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { getErrorMessage } from '../api'
 import { useAuth } from '../auth'
-import type { Role } from '../types'
 
 type AuthMode = 'login' | 'signup'
-
-const loginRoleOptions: Array<{ value: Role; label: string; hint: string }> = [
-  { value: 'ADMIN', label: 'Admin', hint: 'Agency-wide visibility and management' },
-  { value: 'PM', label: 'Project Manager', hint: 'Own projects, tasks, and review alerts' },
-  { value: 'DEVELOPER', label: 'User', hint: 'Assigned tasks, status updates, and notifications' },
-]
-
-const signupRoleOptions: Array<{ value: Role; label: string; hint: string }> = [
-  { value: 'ADMIN', label: 'Admin', hint: 'Create the first admin account for the workspace' },
-  { value: 'PM', label: 'Project Manager', hint: 'Create and manage your own projects' },
-  { value: 'DEVELOPER', label: 'User', hint: 'Work on assigned tasks as a normal user' },
-]
 
 const demoAccounts = [
   {
     label: 'Admin Demo',
     email: 'admin@agency.local',
     password: 'Admin@123',
-    role: 'ADMIN' as Role,
   },
   {
     label: 'PM Demo',
     email: 'pm1@agency.local',
     password: 'Pm@12345',
-    role: 'PM' as Role,
   },
   {
     label: 'User Demo',
     email: 'dev1@agency.local',
     password: 'Dev@12345',
-    role: 'DEVELOPER' as Role,
   },
 ]
 
@@ -44,9 +28,7 @@ export const LoginPage = () => {
   const [mode, setMode] = useState<AuthMode>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [loginRole, setLoginRole] = useState<Role>('ADMIN')
   const [name, setName] = useState('')
-  const [signupRole, setSignupRole] = useState<Role>('DEVELOPER')
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -70,9 +52,9 @@ export const LoginPage = () => {
 
     try {
       if (mode === 'login') {
-        await login({ email, password, role: loginRole })
+        await login({ email, password })
       } else {
-        await signup({ name, email, password, role: signupRole })
+        await signup({ name, email, password, role: 'ADMIN' })
       }
     } catch (requestError) {
       setError(getErrorMessage(requestError))
@@ -83,7 +65,6 @@ export const LoginPage = () => {
 
   const applyDemoAccount = (account: (typeof demoAccounts)[number]) => {
     setMode('login')
-    setLoginRole(account.role)
     setEmail(account.email)
     setPassword(account.password)
     setError(null)
@@ -117,40 +98,19 @@ export const LoginPage = () => {
             </button>
           </div>
 
-          {mode === 'login' ? (
-            <div className="auth-role-grid">
-              {loginRoleOptions.map((option) => (
-                <button
-                  key={option.value}
-                  className={loginRole === option.value ? 'role-card active' : 'role-card'}
-                  onClick={() => setLoginRole(option.value)}
-                  type="button"
-                >
-                  <strong>{option.label}</strong>
-                  <span>{option.hint}</span>
-                </button>
-              ))}
-            </div>
-          ) : (
+          {mode === 'signup' ? (
             <>
-              <div className="auth-role-grid compact">
-                {signupRoleOptions.map((option) => (
-                  <button
-                    key={option.value}
-                    className={signupRole === option.value ? 'role-card active' : 'role-card'}
-                    onClick={() => setSignupRole(option.value)}
-                    type="button"
-                  >
-                    <strong>{option.label}</strong>
-                    <span>{option.hint}</span>
-                  </button>
-                ))}
-              </div>
               <div className="auth-note">
-                The first admin can sign up here. After that, create additional admins from the
-                Users page inside the admin area.
+                Sign up here to create a new admin workspace. After that admin logs in, they can
+                add their own clients, PMs, users, projects, and tasks inside that private
+                workspace.
               </div>
             </>
+          ) : (
+            <div className="auth-note">
+              Sign in with your email and password. Your saved role decides whether you open the
+              admin, project manager, or user workspace.
+            </div>
           )}
         </div>
 
@@ -176,35 +136,12 @@ export const LoginPage = () => {
             />
           </label>
 
-          {mode === 'login' ? (
-            <label>
-              Login as
-              <select
-                value={loginRole}
-                onChange={(event) => setLoginRole(event.target.value as Role)}
-              >
-                {loginRoleOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : (
+          {mode === 'signup' ? (
             <label>
               Account type
-              <select
-                value={signupRole}
-                onChange={(event) => setSignupRole(event.target.value as Role)}
-              >
-                {signupRoleOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+              <input type="text" value="Admin workspace" readOnly />
             </label>
-          )}
+          ) : null}
 
           {error ? <div className="error-banner">{error}</div> : null}
           <button className="primary-button" disabled={isSubmitting} type="submit">
@@ -231,8 +168,8 @@ export const LoginPage = () => {
             </button>
           ))}
           <span className="muted">
-            Demo workspace starts with 1 client, 1 PM, and 1 user example. Admin can create more
-            users and clients after login.
+            Demo workspace starts with 1 admin, 1 client, 1 PM, and 1 user example. Each admin
+            manages their own PMs, users, clients, and projects after login.
           </span>
         </div>
       </section>

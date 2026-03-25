@@ -10,6 +10,7 @@ import {
 import { prisma } from '../../prisma/client.js'
 import { badRequest, forbidden, notFound } from '../../lib/errors.js'
 import { getLimit, getPage } from '../../lib/pagination.js'
+import type { WorkspaceUser } from '../../lib/workspace.js'
 import { emitProjectDeleted, emitProjectUpdated } from '../../socket/index.js'
 import { createInAppNotification } from '../notifications/notifications.service.js'
 import { createProjectTask } from '../tasks/tasks.service.js'
@@ -62,7 +63,7 @@ const projectSummarySelect = {
 
 // Helper function to build the where condition for listing projects based on user role and filters
 const buildProjectWhere = (
-  user: { id: string; role: Role },
+  user: WorkspaceUser,
   filters: { status?: ProjectStatus; clientId?: string },
 ): Prisma.ProjectWhereInput => {
   const where: Prisma.ProjectWhereInput = {}
@@ -73,6 +74,12 @@ const buildProjectWhere = (
 
   if (filters.clientId) {
     where.clientId = filters.clientId
+  }
+
+  if (user.role === Role.ADMIN) {
+    where.client = {
+      createdById: user.scopeAdminId,
+    }
   }
 
   if (user.role === Role.PM) {
@@ -86,12 +93,13 @@ const buildProjectWhere = (
   return where
 }
 
-const ensureProjectDeveloper = async (developerId: string) => {
+const ensureProjectDeveloper = async (developerId: string, scopeAdminId: string) => {
   const user = await prisma.user.findFirst({
     where: {
       id: developerId,
       role: Role.DEVELOPER,
       isActive: true,
+      workspaceAdminId: scopeAdminId,
     },
     select: {
       id: true,
@@ -132,7 +140,7 @@ const createProjectAssignmentNotification = async (input: {
 
 
 const resolveProjectManagerId = async (
-  user: { id: string; role: Role },
+  user: WorkspaceUser,
   projectManagerId?: string | null,
 ) => {
   if (user.role === Role.PM) {
@@ -148,6 +156,7 @@ const resolveProjectManagerId = async (
       id: projectManagerId,
       role: Role.PM,
       isActive: true,
+      workspaceAdminId: user.scopeAdminId,
     },
     select: {
       id: true,
@@ -161,10 +170,11 @@ const resolveProjectManagerId = async (
   return projectManager.id
 }
 
-const getProjectForUser = async (projectId: string, user: { id: string; role: Role }) => {
+const getProjectForUser = async (projectId: string, user: WorkspaceUser) => {
   const project = await prisma.project.findFirst({
     where: {
       id: projectId,
+      ...(user.role === Role.ADMIN ? { client: { createdById: user.scopeAdminId } } : {}),
       ...(user.role === Role.PM ? { createdById: user.id } : {}),
       ...(user.role === Role.DEVELOPER ? { assignedDeveloperId: user.id } : {}),
     },
@@ -180,9 +190,13 @@ const getProjectForUser = async (projectId: string, user: { id: string; role: Ro
 
 
 // this function to get project for management actions like update, assign, delete) with proper authorization checks
-const getProjectForManagement = async (projectId: string, user: { id: string; role: Role }) => {
-  const project = await prisma.project.findUnique({
-    where: { id: projectId },
+const getProjectForManagement = async (projectId: string, user: WorkspaceUser) => {
+  const project = await prisma.project.findFirst({
+    where: {
+      id: projectId,
+      ...(user.role === Role.ADMIN ? { client: { createdById: user.scopeAdminId } } : {}),
+      ...(user.role === Role.PM ? { createdById: user.id } : {}),
+    },
     include: {
       createdBy: {
         select: {
@@ -211,10 +225,6 @@ const getProjectForManagement = async (projectId: string, user: { id: string; ro
     throw notFound('Project not found')
   }
 
-  if (user.role === Role.PM && project.createdById !== user.id) {
-    throw forbidden('You can only manage projects you created')
-  }
-
   if (user.role === Role.DEVELOPER) {
     throw forbidden('Developers cannot manage project assignment')
   }
@@ -224,11 +234,11 @@ const getProjectForManagement = async (projectId: string, user: { id: string; ro
 
 
 // aceessing the project by id
-export const getProjectById = async (projectId: string, user: { id: string; role: Role }) =>
+export const getProjectById = async (projectId: string, user: WorkspaceUser) =>
   getProjectForUser(projectId, user)
 
 export const listProjects = async (
-  user: { id: string; role: Role },
+  user: WorkspaceUser,
   query: { status?: ProjectStatus; clientId?: string; page?: number; limit?: number },
 ) => {
   const page = getPage(query.page?.toString())
@@ -258,7 +268,7 @@ export const listProjects = async (
 }
 
 export const createProject = async (
-  user: { id: string; role: Role; name?: string },
+  user: WorkspaceUser,
   input: {
     clientId: string
     name: string
@@ -269,8 +279,11 @@ export const createProject = async (
     projectManagerId?: string
   },
 ) => {
-  const client = await prisma.client.findUnique({
-    where: { id: input.clientId },
+  const client = await prisma.client.findFirst({
+    where: {
+      id: input.clientId,
+      createdById: user.scopeAdminId,
+    },
   })
 
   if (!client) {
@@ -294,7 +307,7 @@ export const createProject = async (
   })
 
   // Emit project created event with the project manager as the main recipient for real-time updates
-  emitProjectUpdated(project, project.createdById)
+  emitProjectUpdated(project, user.scopeAdminId, project.createdById)
 
   if (user.role === Role.ADMIN && project.createdById !== user.id) {
     await createProjectAssignmentNotification({
@@ -311,7 +324,7 @@ export const createProject = async (
 
 export const updateProject = async (
   projectId: string,
-  user: { id: string; role: Role; name?: string },
+  user: WorkspaceUser,
   input: {
     name?: string
     description?: string | null
@@ -350,7 +363,7 @@ export const updateProject = async (
     select: projectSummarySelect,
   })
 
-  emitProjectUpdated(updatedProject, updatedProject.createdById, [
+  emitProjectUpdated(updatedProject, user.scopeAdminId, updatedProject.createdById, [
     project.createdById,
     project.assignedDeveloperId,
     updatedProject.assignedDeveloperId,
@@ -379,7 +392,7 @@ export const updateProject = async (
 
 export const assignProjectToDeveloper = async (
   projectId: string,
-  user: { id: string; role: Role },
+  user: WorkspaceUser,
   developerId: string,
 ) => {
   if (user.role !== Role.PM) {
@@ -387,7 +400,7 @@ export const assignProjectToDeveloper = async (
   }
 
   const project = await getProjectForManagement(projectId, user)
-  const developer = await ensureProjectDeveloper(developerId)
+  const developer = await ensureProjectDeveloper(developerId, user.scopeAdminId)
 
   const updatedProject = await prisma.project.update({
     where: { id: projectId },
@@ -408,7 +421,7 @@ export const assignProjectToDeveloper = async (
     })
   }
   // Emit project updated event with the assigned developer as the main recipient for real-time updates
-  emitProjectUpdated(updatedProject, project.createdById, [
+  emitProjectUpdated(updatedProject, user.scopeAdminId, project.createdById, [
     project.assignedDeveloperId,
     developer.id,
   ])
@@ -418,12 +431,17 @@ export const assignProjectToDeveloper = async (
 
 export const updateProjectStatus = async (
   projectId: string,
-  user: { id: string; role: Role },
+  user: WorkspaceUser,
   status: ProjectStatus,
 ) => {
   // fetching project from their id
-  const project = await prisma.project.findUnique({
-    where: { id: projectId },
+  const project = await prisma.project.findFirst({
+    where: {
+      id: projectId,
+      ...(user.role === Role.ADMIN ? { client: { createdById: user.scopeAdminId } } : {}),
+      ...(user.role === Role.PM ? { createdById: user.id } : {}),
+      ...(user.role === Role.DEVELOPER ? { assignedDeveloperId: user.id } : {}),
+    },
     include: {
       createdBy: {
         select: {
@@ -437,14 +455,6 @@ export const updateProjectStatus = async (
 
   if (!project) {
     throw notFound('Project not found')
-  }
-
-  if (user.role === Role.PM && project.createdById !== user.id) {
-    throw forbidden('You can only update projects you created')
-  }
-
-  if (user.role === Role.DEVELOPER && project.assignedDeveloperId !== user.id) {
-    throw forbidden('You can only update projects assigned to you')
   }
 
   if (project.status === status) {
@@ -461,7 +471,7 @@ export const updateProjectStatus = async (
     select: projectSummarySelect,
   })
 
-  emitProjectUpdated(updatedProject, project.createdById, [project.assignedDeveloperId])
+  emitProjectUpdated(updatedProject, user.scopeAdminId, project.createdById, [project.assignedDeveloperId])
 
   return updatedProject
 }
@@ -471,14 +481,19 @@ export const updateProjectStatus = async (
 
 export const deleteCompletedProject = async (
   projectId: string,
-  user: { id: string; role: Role },
+  user: WorkspaceUser,
 ) => {
   if (user.role !== Role.ADMIN) {
     throw forbidden('Only admins can delete projects')
   }
 // Fetch the project with related tasks and notifications to ensure it exists and is completed
-  const project = await prisma.project.findUnique({
-    where: { id: projectId },
+  const project = await prisma.project.findFirst({
+    where: {
+      id: projectId,
+      client: {
+        createdById: user.scopeAdminId,
+      },
+    },
     select: {
       id: true,
       status: true,
@@ -543,7 +558,7 @@ export const deleteCompletedProject = async (
     })
   })
 
-  emitProjectDeleted(project.id, project.createdById, [project.assignedDeveloperId])
+  emitProjectDeleted(project.id, user.scopeAdminId, project.createdById, [project.assignedDeveloperId])
 
   return {
     projectId: project.id,
@@ -553,7 +568,7 @@ export const deleteCompletedProject = async (
 
 export const createTaskForProject = async (
   projectId: string,
-  user: { id: string; role: Role; name: string; email: string },
+  user: WorkspaceUser,
   input: {
     title: string
     description?: string

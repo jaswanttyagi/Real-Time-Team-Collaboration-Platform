@@ -1,6 +1,7 @@
 import { type Prisma, type TaskStatus } from '@prisma/client'
 import { prisma } from '../../prisma/client.js'
 import { getLimit, getPage } from '../../lib/pagination.js'
+import type { WorkspaceUser } from '../../lib/workspace.js'
 
 const activitySelect = {
   id: true,
@@ -29,10 +30,7 @@ const activitySelect = {
 } as const
 
 export const buildActivityAccessWhere = (
-  user:{
-    id: string
-    role: 'ADMIN' | 'PM' | 'DEVELOPER'
-  },
+  user: WorkspaceUser,
   filters: {
     projectId?: string
     taskId?:string
@@ -58,7 +56,14 @@ export const buildActivityAccessWhere = (
 
   // allow to acess all activities if user is admin -> (like add clients , add user , delete user , delete projects etc)
   if (user.role==='ADMIN'){
-    return where
+    return {
+      ...where,
+      project: {
+        client: {
+          createdById: user.scopeAdminId,
+        },
+      },
+    }
   }
 
   // if user is pm then it can acess the activites of project and assigned the project to Developer
@@ -81,7 +86,7 @@ export const buildActivityAccessWhere = (
 }
 
 export const listActivities = async(
-  user: { id: string; role: 'ADMIN' | 'PM' | 'DEVELOPER' },
+  user: WorkspaceUser,
   query: { projectId?: string; taskId?: string; since?: string; page?: number; limit?: number },
 ) =>{
   const page = getPage(query.page?.toString())

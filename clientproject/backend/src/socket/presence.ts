@@ -1,26 +1,44 @@
-const onlineUsers = new Map<string, Set<string>>()
+const onlineUsers = new Map<string, { scopeAdminId: string; socketIds: Set<string> }>()
 
-export const addPresence = (userId: string, socketId: string) => {
-  const sockets = onlineUsers.get(userId) ?? new Set<string>()
-  sockets.add(socketId)
-  onlineUsers.set(userId, sockets)
-  return onlineUsers.size
+export const addPresence = (userId: string, scopeAdminId: string, socketId: string) => {
+  const entry = onlineUsers.get(userId) ?? {
+    scopeAdminId,
+    socketIds: new Set<string>(),
+  }
+
+  entry.scopeAdminId = scopeAdminId
+  entry.socketIds.add(socketId)
+  onlineUsers.set(userId, entry)
+  return getOnlineUsersCount(scopeAdminId)
 }
 
 export const removePresence = (userId: string, socketId: string) => {
-  const sockets = onlineUsers.get(userId)
-  if (!sockets) {
+  const entry = onlineUsers.get(userId)
+  if (!entry) {
+    return 0
+  }
+
+  entry.socketIds.delete(socketId)
+  if (entry.socketIds.size === 0) {
+    onlineUsers.delete(userId)
+  } else {
+    onlineUsers.set(userId, entry)
+  }
+
+  return getOnlineUsersCount(entry.scopeAdminId)
+}
+
+export const getOnlineUsersCount = (scopeAdminId?: string) => {
+  if (!scopeAdminId) {
     return onlineUsers.size
   }
 
-  sockets.delete(socketId)
-  if (sockets.size === 0) {
-    onlineUsers.delete(userId)
-  } else {
-    onlineUsers.set(userId, sockets)
+  let count = 0
+  for (const entry of onlineUsers.values()) {
+    if (entry.scopeAdminId === scopeAdminId) {
+      count += 1
+    }
   }
 
-  return onlineUsers.size
+  return count
 }
-
-export const getOnlineUsersCount = () => onlineUsers.size

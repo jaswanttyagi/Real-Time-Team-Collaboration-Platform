@@ -19,7 +19,7 @@ usersRouter.get(
   '/assignable/developers',
   authorize('ADMIN', 'PM'),
   asyncHandler(async (_req, res) => {
-    const developers = await listAssignableDevelopers()
+    const developers = await listAssignableDevelopers(_req.user!)
     res.json({
       success: true,
       data: {
@@ -35,7 +35,7 @@ usersRouter.get(
   '/',
   validate({ query: listUsersQuerySchema }),
   asyncHandler(async (req, res) => {
-    const data = await listUsers(req.query)
+    const data = await listUsers(req.user!, req.query)
     res.json({
       success: true,
       data,
@@ -47,7 +47,10 @@ usersRouter.post(
   '/',
   validate({ body: createUserSchema }),
   asyncHandler(async (req, res) => {
-    const user = await createUser(req.body)
+    const user = await createUser({
+      actor: req.user!,
+      ...req.body,
+    })
     res.status(201).json({
       success: true,
       data: {
@@ -61,7 +64,7 @@ usersRouter.patch(
   '/:id',
   validate({ params: userIdParamsSchema, body: updateUserSchema }),
   asyncHandler(async (req, res) => {
-    const user = await updateUser(req.params.id as string, req.body)
+    const user = await updateUser(req.user!, req.params.id as string, req.body)
     res.json({
       success: true,
       data: {

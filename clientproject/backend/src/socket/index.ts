@@ -9,6 +9,7 @@ import { addPresence, getOnlineUsersCount, removePresence } from './presence.js'
 type UserPayload = {
   id: string
   role: Role
+  scopeAdminId: string
   email: string
   name: string
 }
@@ -36,7 +37,14 @@ const buildActivityWhere = (user: UserPayload, since?: Date) => {
   const base: Prisma.ActivityLogWhereInput = since ? { createdAt: { gt: since } } : {}
 
   if (user.role === 'ADMIN') {
-    return base
+    return {
+      ...base,
+      project: {
+        client: {
+          createdById: user.scopeAdminId,
+        },
+      },
+    }
   }
 
   if (user.role === 'PM') {
@@ -56,19 +64,19 @@ const buildActivityWhere = (user: UserPayload, since?: Date) => {
   }
 }
 
-export const emitPresenceUpdate = () => {
+export const emitPresenceUpdate = (scopeAdminId: string) => {
   if (!io) {
     return
   }
 
-  io.to('role:admin').emit('presence:update', {
-    onlineUsers: getOnlineUsersCount(),
+  io.to(`workspace:${scopeAdminId}:admins`).emit('presence:update', {
+    onlineUsers: getOnlineUsersCount(scopeAdminId),
   })
 }
 
 export const emitActivity = (
   payload: unknown,
-  _projectId: string,
+  scopeAdminId: string,
   developerId?: string | null,
   ownerPmId?: string,
 ) => {
@@ -76,7 +84,7 @@ export const emitActivity = (
     return
   }
 
-  io.to('role:admin').emit('activity:new', payload)
+  io.to(`workspace:${scopeAdminId}:admins`).emit('activity:new', payload)
 
   if (ownerPmId) {
     io.to(`user:${ownerPmId}`).emit('activity:new', payload)
@@ -101,6 +109,7 @@ export const emitNotification = (recipientUserId: string, payload: unknown, unre
 
 export const emitProjectUpdated = (
   payload: unknown,
+  scopeAdminId: string,
   ownerPmId?: string | null,
   developerIds: Array<string | null | undefined> = [],
 ) => {
@@ -108,7 +117,7 @@ export const emitProjectUpdated = (
     return
   }
 
-  io.to('role:admin').emit('project:updated', payload)
+  io.to(`workspace:${scopeAdminId}:admins`).emit('project:updated', payload)
 
   if (ownerPmId) {
     io.to(`user:${ownerPmId}`).emit('project:updated', payload)
@@ -122,6 +131,7 @@ export const emitProjectUpdated = (
 
 export const emitProjectDeleted = (
   projectId: string,
+  scopeAdminId: string,
   ownerPmId?: string | null,
   developerIds: Array<string | null | undefined> = [],
 ) => {
@@ -131,7 +141,7 @@ export const emitProjectDeleted = (
 
   const payload = { projectId }
 
-  io.to('role:admin').emit('project:deleted', payload)
+  io.to(`workspace:${scopeAdminId}:admins`).emit('project:deleted', payload)
 
   if (ownerPmId) {
     io.to(`user:${ownerPmId}`).emit('project:deleted', payload)
@@ -192,6 +202,7 @@ export const initializeSocket = (server: HttpServer) => {
       socket.data.user = {
         id: payload.sub,
         role: payload.role,
+        scopeAdminId: payload.scopeAdminId,
         email: payload.email,
         name: payload.name,
       } satisfies UserPayload
@@ -205,13 +216,17 @@ export const initializeSocket = (server: HttpServer) => {
     const user = socket.data.user as UserPayload
 
     socket.join(`user:${user.id}`)
-    socket.join(`role:${user.role.toLowerCase()}`)
+    socket.join(`workspace:${user.scopeAdminId}`)
 
-    const onlineUsers = addPresence(user.id, socket.id)
+    if (user.role === 'ADMIN') {
+      socket.join(`workspace:${user.scopeAdminId}:admins`)
+    }
+
+    const onlineUsers = addPresence(user.id, user.scopeAdminId, socket.id)
     if (user.role === 'ADMIN') {
       socket.emit('presence:update', { onlineUsers })
     }
-    emitPresenceUpdate()
+    emitPresenceUpdate(user.scopeAdminId)
 
     const unreadCount = await prisma.notification.count({
       where: {
@@ -233,6 +248,11 @@ export const initializeSocket = (server: HttpServer) => {
           id: true,
           createdById: true,
           assignedDeveloperId: true,
+          client: {
+            select: {
+              createdById: true,
+            },
+          },
         },
       })
 
@@ -241,7 +261,7 @@ export const initializeSocket = (server: HttpServer) => {
       }
 
       if (
-        user.role === 'ADMIN' ||
+        (user.role === 'ADMIN' && project.client.createdById === user.scopeAdminId) ||
         project.createdById === user.id ||
         project.assignedDeveloperId === user.id
       ) {
@@ -262,6 +282,11 @@ export const initializeSocket = (server: HttpServer) => {
           project: {
             select: {
               createdById: true,
+              client: {
+                select: {
+                  createdById: true,
+                },
+              },
             },
           },
         },
@@ -272,7 +297,7 @@ export const initializeSocket = (server: HttpServer) => {
       }
 
       if (
-        user.role === 'ADMIN' ||
+        (user.role === 'ADMIN' && task.project.client.createdById === user.scopeAdminId) ||
         task.project.createdById === user.id ||
         task.assignedDeveloperId === user.id
       ) {
@@ -307,7 +332,7 @@ export const initializeSocket = (server: HttpServer) => {
 
     socket.on('disconnect', () => {
       removePresence(user.id, socket.id)
-      emitPresenceUpdate()
+      emitPresenceUpdate(user.scopeAdminId)
     })
   })
 

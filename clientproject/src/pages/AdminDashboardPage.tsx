@@ -71,7 +71,7 @@ export const AdminDashboardPage = () => {
             </div>
           </div>
         </div>
-        <ActivityFeedPanel title="Live Agency Activity" />
+        <ActivityFeedPanel title="Live Workspace Activity" />
       </section>
 
       <section className="management-grid">
@@ -84,8 +84,8 @@ export const AdminDashboardPage = () => {
           </div>
           <strong className="management-count">{usersQuery.data?.meta.total ?? 0}</strong>
           <span className="muted">
-            Create users, assign Admin or PM or User roles, activate or deactivate accounts, and
-            view the full team list.
+            Create PM and User accounts for this admin workspace, activate or deactivate them, and
+            review your team list.
           </span>
           <div className="management-list">
             {(usersQuery.data?.items ?? []).map((user) => (
@@ -109,7 +109,7 @@ export const AdminDashboardPage = () => {
           </div>
           <strong className="management-count">{clientsQuery.data?.meta.total ?? 0}</strong>
           <span className="muted">
-            Create, update, delete, and review every client record from one admin area.
+            Create, update, delete, and review the clients that belong to this admin workspace.
           </span>
           <div className="management-list">
             {(clientsQuery.data?.items ?? []).map((client) => (
@@ -132,7 +132,7 @@ export const AdminDashboardPage = () => {
           </div>
           <strong className="management-count">{projectsQuery.data?.meta.total ?? 0}</strong>
           <span className="muted">
-            Create projects, assign a PM, view every project, and update project details and
+            Create projects for your workspace, assign a PM, and manage project details and
             status.
           </span>
           <div className="management-list">

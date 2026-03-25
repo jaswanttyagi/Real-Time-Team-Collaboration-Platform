@@ -1,26 +1,46 @@
-import { Role, TaskStatus } from '@prisma/client'
+import { TaskStatus } from '@prisma/client'
 import { prisma } from '../../prisma/client.js'
 import { listActivities } from '../activities/activities.service.js'
 import { listTasks } from '../tasks/tasks.service.js'
 import { getOnlineUsersCount } from '../../socket/presence.js'
+import type { WorkspaceUser } from '../../lib/workspace.js'
 
-export const getAdminDashboard = async()=>{
-    const [totalProjects, overdueCount, statusGroups, recentActivity] = await Promise.all([prisma.project.count(),
+export const getAdminDashboard = async(user: WorkspaceUser)=>{
+    const [totalProjects, overdueCount, statusGroups, recentActivity] = await Promise.all([
+        prisma.project.count({
+            where: {
+                client: {
+                    createdById: user.scopeAdminId,
+                },
+            },
+        }),
         prisma.task.count({
             where: {
                 isOverdue: true,
-                    status:{
-                        not: TaskStatus.DONE,
+                status:{
+                    not: TaskStatus.DONE,
+                },
+                project: {
+                    client: {
+                        createdById: user.scopeAdminId,
                     },
                 },
+            },
         }),
         prisma.task.groupBy({
       by: ['status'],
+      where: {
+        project: {
+          client: {
+            createdById: user.scopeAdminId,
+          },
+        },
+      },
       _count: {
         status: true,
       },
     }),
-    listActivities({ id: 'admin', role: Role.ADMIN }, { page: 1, limit: 10 }),
+    listActivities(user, { page: 1, limit: 10 }),
     ])
 
     const tasksByStatus = {
@@ -38,14 +58,14 @@ export const getAdminDashboard = async()=>{
         tasksByStatus,
         overdueCount,
         recentActivity: recentActivity.items,
-        onlineUsers: getOnlineUsersCount(),
+        onlineUsers: getOnlineUsersCount(user.scopeAdminId),
     }
 }
 
 
 // PM DASHBOARD
 
-export const getPmDashboard = async(user : {id:string; role: Role})=>{
+export const getPmDashboard = async(user : WorkspaceUser)=>{
     const startOfWeek = new Date()
     startOfWeek.setHours(0,0,0,0)
         const endofWeek = new Date(startOfWeek)
@@ -100,7 +120,7 @@ export const getPmDashboard = async(user : {id:string; role: Role})=>{
                     }
                 },
         }),
-        listActivities({ id: user.id, role: Role.PM }, { page: 1, limit: 10 }),
+        listActivities(user, { page: 1, limit: 10 }),
     ])
     return {
         projectSummary:{
@@ -113,16 +133,16 @@ export const getPmDashboard = async(user : {id:string; role: Role})=>{
 }
 
 // Developer Dashboard
-export const getDeveloperDashboard = async(user : {id:string; role: Role})=>{
+export const getDeveloperDashboard = async(user : WorkspaceUser)=>{
     const [assignedTasks, unreadCount, recentActivity] = await Promise.all([
-        listTasks({ id: user.id, role: Role.DEVELOPER }, { page: 1, limit: 20 }),
+        listTasks(user, { page: 1, limit: 20 }),
         prisma.notification.count({
             where: {
                recipientUserId: user.id,
         isRead: false,
             },
         }),
-        listActivities({ id: user.id, role: Role.DEVELOPER }, { page: 1, limit: 10 }),
+        listActivities(user, { page: 1, limit: 10 }),
     ])
     return {
         assignedTasks: assignedTasks.items,

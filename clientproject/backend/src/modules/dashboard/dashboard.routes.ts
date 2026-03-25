@@ -16,7 +16,7 @@ dashboardRouter.get(
   '/admin',
   authorize('ADMIN'),
   asyncHandler(async (_req, res) => {
-    const data = await getAdminDashboard()
+    const data = await getAdminDashboard(_req.user!)
     res.json({
       success: true,
       data,

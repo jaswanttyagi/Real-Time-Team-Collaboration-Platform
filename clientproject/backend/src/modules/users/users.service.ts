@@ -1,6 +1,8 @@
+import { Role, type Prisma } from '@prisma/client'
 import { prisma } from '../../prisma/client.js'
-import { conflict, notFound } from '../../lib/errors.js'
+import { badRequest, conflict, notFound } from '../../lib/errors.js'
 import { getLimit, getPage } from '../../lib/pagination.js'
+import { buildWorkspaceUserWhere, isWorkspaceMemberRole, type WorkspaceUser } from '../../lib/workspace.js'
 import { hashPassword } from '../../lib/password.js'
 import { assertPasswordStrength } from '../auth/auth.service.js'
 
@@ -14,10 +16,17 @@ const selectUserFields = {
   updatedAt: true,
 } as const
 
-export const listUsers = async (query: { role?: 'ADMIN' | 'PM' | 'DEVELOPER'; page?: number; limit?: number }) => {
+export const listUsers = async (
+  user: WorkspaceUser,
+  query: { role?: 'ADMIN' | 'PM' | 'DEVELOPER'; page?: number; limit?: number },
+) => {
   const page = getPage(query.page?.toString())
   const limit = getLimit(query.limit?.toString())
-  const where = query.role ? { role: query.role } : {}
+  const where: Prisma.UserWhereInput = query.role
+    ? query.role === Role.ADMIN
+      ? { id: user.scopeAdminId, role: query.role }
+      : { workspaceAdminId: user.scopeAdminId, role: query.role }
+    : buildWorkspaceUserWhere(user.scopeAdminId)
 
   const [items, total] = await prisma.$transaction([
     prisma.user.findMany({
@@ -41,11 +50,12 @@ export const listUsers = async (query: { role?: 'ADMIN' | 'PM' | 'DEVELOPER'; pa
   }
 }
 
-export const listAssignableDevelopers = async () =>
+export const listAssignableDevelopers = async (user: WorkspaceUser) =>
   prisma.user.findMany({
     where: {
       role: 'DEVELOPER',
       isActive: true,
+      workspaceAdminId: user.scopeAdminId,
     },
     orderBy: {
       name: 'asc',
@@ -58,6 +68,7 @@ export const listAssignableDevelopers = async () =>
   })
 
 export const createUser = async (input: {
+  actor: WorkspaceUser
   name: string
   email: string
   role: 'ADMIN' | 'PM' | 'DEVELOPER'
@@ -74,11 +85,16 @@ export const createUser = async (input: {
 
   assertPasswordStrength(input.tempPassword)
 
+  if (!isWorkspaceMemberRole(input.role)) {
+    throw badRequest('Create admin accounts from the sign-up screen')
+  }
+
   const user = await prisma.user.create({
     data: {
       name: input.name,
       email,
       role: input.role,
+      workspaceAdminId: input.actor.scopeAdminId,
       passwordHash: await hashPassword(input.tempPassword),
     },
     select: selectUserFields,
@@ -88,6 +104,7 @@ export const createUser = async (input: {
 }
 
 export const updateUser = async (
+  actor: WorkspaceUser,
   userId: string,
   input: {
     name?: string
@@ -101,6 +118,18 @@ export const updateUser = async (
 
   if (!existingUser) {
     throw notFound('User not found')
+  }
+
+  if (existingUser.workspaceAdminId !== actor.scopeAdminId) {
+    throw notFound('User not found')
+  }
+
+  if (existingUser.role === Role.ADMIN || input.role === Role.ADMIN) {
+    throw badRequest('Admin accounts are managed through their own sign-in')
+  }
+
+  if (input.role && !isWorkspaceMemberRole(input.role)) {
+    throw badRequest('Only PM and User roles can be assigned here')
   }
 
   const user = await prisma.user.update({

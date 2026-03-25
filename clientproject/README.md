@@ -73,10 +73,10 @@ npm run dev:full
 
 ### Admin
 
-- Full access
-- Manage users, clients, projects
-- View all dashboards and live activity
-- See online users count in real time
+- Full access inside their own workspace
+- Manage their own PMs, users, clients, and projects
+- View workspace dashboards and live activity
+- See online users count in real time for their workspace
 
 ### Project Manager
 
@@ -224,7 +224,7 @@ npm run dev:full
 
 ### 7. Log in with a seeded account
 
-Do not use your personal email until you create it from the admin side. The seeded login emails are:
+You can sign up with your own email as a new Admin workspace owner, or use one of the seeded login emails:
 
 - `admin@agency.local`
 - `pm1@agency.local`
@@ -340,7 +340,7 @@ The seeded workspace is intentionally minimal for easier review:
 - 1 Developer
 - 1 Example project with tasks, activity, and notifications
 
-Create additional PMs, developers, clients, and projects from the admin panel after login.
+Create PMs, developers, clients, and projects inside each admin workspace after login.
 
 ## Important API Notes
 

@@ -396,7 +396,7 @@ export const ProjectsPage = () => {
             <p className="muted">
               {user?.role === 'DEVELOPER'
                 ? 'Only projects assigned to you appear here.'
-                : 'Admin sees all projects. PM sees only projects they created.'}
+                : 'Admin sees projects in their own workspace. PM sees only projects they created.'}
             </p>
           </div>
         </div>

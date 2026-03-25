@@ -21,6 +21,7 @@ export const authenticate = (req: Request, _res: Response, next: NextFunction) =
     req.user = {
       id: payload.sub,
       role: payload.role,
+      scopeAdminId: payload.scopeAdminId,
       email: payload.email,
       name: payload.name,
     }

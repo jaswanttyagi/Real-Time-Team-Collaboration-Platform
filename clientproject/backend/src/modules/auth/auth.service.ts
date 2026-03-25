@@ -34,16 +34,34 @@ const sanitizeUser = (user :{
     isActive: user.isActive,
 })
 
+const getScopeAdminId = (user: {
+  id: string
+  role: Role
+  workspaceAdminId: string | null
+}) => {
+  if (user.role === Role.ADMIN) {
+    return user.id
+  }
+
+  if (!user.workspaceAdminId) {
+    throw unauthorized('This account is not linked to an admin workspace yet')
+  }
+
+  return user.workspaceAdminId
+}
+
 const issueSessionTokens = async(
     user:{
       id: string
     name: string
     email: string
     role: 'ADMIN' | 'PM' | 'DEVELOPER'
+    workspaceAdminId: string | null
     isActive: boolean  
     },
     request:Request,
 )=>{
+    const scopeAdminId = getScopeAdminId(user)
     const session = await prisma.session.create({
         data:{
             userId:user.id,
@@ -67,6 +85,7 @@ const issueSessionTokens = async(
     const accessToken = signAccessToken({
         sub:user.id,
         role:user.role,
+        scopeAdminId,
         email:user.email,
         name:user.name,
     })
@@ -80,7 +99,6 @@ export const login = async(
     response : Response,
     email: string,
     password: string,
-    selectedRole: Role,
 )=>{
     const user = await prisma.user.findUnique({
         where:{email : email.toLowerCase()},
@@ -94,7 +112,6 @@ export const login = async(
     if(!passwordMatches){
         throw unauthorized('Invalid email or password')
     }
-    assertSelectedRole(selectedRole, user.role)
 
     const {accessToken, refreshToken} = await issueSessionTokens(user, request)
 
@@ -127,22 +144,17 @@ export const register = async(
         throw conflict('Email is already in use')
     }
 
-        assertPasswordStrength(input.password)
-        if(input.role === 'ADMIN'){
-            const adminCount = await prisma.user.count({
-                where:{role:'ADMIN'},
-            })
-
-            if(adminCount > 0){
-                throw badRequest('Admin role is already assigned to another user')
-            }
+        if (input.role !== Role.ADMIN) {
+            throw badRequest('Only admin accounts can sign up directly')
         }
+        assertPasswordStrength(input.password)
         const user = await prisma.user.create({
             data:{
                 name: input.name.trim(),
                 email,
                 passwordHash: await hashPassword(input.password),
                 role: input.role,
+                workspaceAdminId: null,
             },
         })
 
@@ -202,6 +214,7 @@ export const register = async(
     const accessToken = signAccessToken({
         sub: session.userId,
         role: session.user.role,
+        scopeAdminId: getScopeAdminId(session.user),
         name: session.user.name,
         email: session.user.email,
     })
@@ -253,11 +266,5 @@ export const getCurrentUser = async(
 export const assertPasswordStrength = (password: string) => {
   if (password.length < 8) {
     throw badRequest('Password must be at least 8 characters long')
-  }
-}
-// selected role assertion
-export const assertSelectedRole = (selectedRole: Role, actualRole: Role) => {
-  if (selectedRole !== actualRole) {
-    throw unauthorized(`This account belongs to the ${actualRole} login flow`)
   }
 }

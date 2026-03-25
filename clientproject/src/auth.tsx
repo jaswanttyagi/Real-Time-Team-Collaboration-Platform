@@ -15,12 +15,12 @@ type AuthContextValue = {
   accessToken: string | null
   isBooting: boolean
   isAuthenticated: boolean
-  login: (payload: { email: string; password: string; role: User['role'] }) => Promise<void>
+  login: (payload: { email: string; password: string }) => Promise<void>
   signup: (payload: {
     name: string
     email: string
     password: string
-    role: User['role']
+    role: 'ADMIN'
   }) => Promise<void>
   logout: () => Promise<void>
 }
@@ -65,7 +65,7 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
     })
   }, [clearAuth, refreshSession])
 
-  const login = useCallback(async (payload: { email: string; password: string; role: User['role'] }) => {
+  const login = useCallback(async (payload: { email: string; password: string }) => {
     const result = await api.login(payload)
     setUser(result.user)
     setAccessToken(result.accessToken)
@@ -77,7 +77,7 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
       name: string
       email: string
       password: string
-      role: User['role']
+      role: 'ADMIN'
     }) => {
       const result = await api.register(payload)
       setUser(result.user)

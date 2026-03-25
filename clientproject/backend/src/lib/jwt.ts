@@ -6,6 +6,7 @@ import { env } from '../config/env.js'
 type AccessPayload = {
   sub: string
   role: Role
+  scopeAdminId: string
   email: string
   name: string
 }

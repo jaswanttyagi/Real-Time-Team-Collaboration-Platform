@@ -20,7 +20,7 @@ clientsRouter.get(
   authorize('ADMIN', 'PM'),
   validate({ query: listClientsQuerySchema }),
   asyncHandler(async (req, res) => {
-    const data = await listClients(req.query)
+    const data = await listClients(req.user!, req.query)
     res.json({
       success: true,
       data,
@@ -33,7 +33,7 @@ clientsRouter.post(
   authorize('ADMIN'),
   validate({ body: createClientSchema }),
   asyncHandler(async (req, res) => {
-    const client = await createClient(req.user!.id, req.body)
+    const client = await createClient(req.user!, req.body)
     res.status(201).json({
       success: true,
       data: {
@@ -48,7 +48,7 @@ clientsRouter.patch(
   authorize('ADMIN'),
   validate({ params: clientIdParamsSchema, body: updateClientSchema }),
   asyncHandler(async (req, res) => {
-    const client = await updateClient(req.params.id as string, req.body)
+    const client = await updateClient(req.user!, req.params.id as string, req.body)
     res.json({
       success: true,
       data: {
@@ -63,7 +63,7 @@ clientsRouter.delete(
   authorize('ADMIN'),
   validate({ params: clientIdParamsSchema }),
   asyncHandler(async (req, res) => {
-    const data = await deleteClient(req.params.id as string)
+    const data = await deleteClient(req.user!, req.params.id as string)
     res.json({
       success: true,
       data,

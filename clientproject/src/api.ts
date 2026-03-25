@@ -157,7 +157,7 @@ const compactQuery = (query: Record<string, string | number | undefined | null>)
 }
 
 export const api = {
-  login: (payload: { email: string; password: string; role: Role }) =>
+  login: (payload: { email: string; password: string }) =>
     unwrap<{ user: User; accessToken: string }>({
       method: 'POST',
       url: '/auth/login',
@@ -167,7 +167,7 @@ export const api = {
     name: string
     email: string
     password: string
-    role: Role
+    role: 'ADMIN'
   }) =>
     unwrap<{ user: User; accessToken: string }>({
       method: 'POST',
