@@ -11,6 +11,7 @@ import {
 import { useQueryClient } from '@tanstack/react-query'
 import { io, type Socket } from 'socket.io-client'
 import { useAuth } from './auth'
+import { resolveSocketUrl } from './network'
 import type { Activity } from './types'
 
 type SocketContextValue = {
@@ -23,11 +24,7 @@ type SocketContextValue = {
 
 const SocketContext = createContext<SocketContextValue | null>(null)
 
-const socketUrl = import.meta.env.VITE_SOCKET_URL?.trim()
-  ? import.meta.env.VITE_SOCKET_URL
-  : import.meta.env.DEV
-    ? 'http://localhost:4000'
-    : window.location.origin
+const socketUrl = resolveSocketUrl()
 
 const mergeActivities = (current: Activity[], nextBatch: Activity[]) => {
   const map = new Map<string, Activity>()

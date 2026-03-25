@@ -13,14 +13,6 @@ const configuredOrigins = [
   ...(env.CLIENT_URLS?.split(',').map((item) => item.trim()).filter(Boolean) ?? []),
 ].map(normalizeOrigin)
 
-const allConfiguredHostsAreRender = configuredOrigins.every((origin) => {
-  try {
-    return new URL(origin).hostname.endsWith('.onrender.com')
-  } catch {
-    return false
-  }
-})
-
 export const isAllowedOrigin = (origin?: string) => {
   if (!origin) {
     return true
@@ -41,13 +33,14 @@ export const isAllowedOrigin = (origin?: string) => {
     }
   }
 
-  if (!allConfiguredHostsAreRender) {
-    return false
-  }
-
   try {
     const { protocol, hostname } = new URL(normalizedOrigin)
-    return protocol === 'https:' && hostname.endsWith('.onrender.com')
+
+    if (protocol === 'https:') {
+      return true
+    }
+
+    return hostname === 'localhost' || hostname === '127.0.0.1'
   } catch {
     return false
   }

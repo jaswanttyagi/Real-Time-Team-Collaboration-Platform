@@ -1,4 +1,5 @@
 import axios, { AxiosError, type AxiosRequestConfig } from 'axios'
+import { resolveApiBaseUrl } from './network'
 import type {
   Activity,
   AdminDashboard,
@@ -16,7 +17,7 @@ import type {
   User,
 } from './types'
 
-const apiBaseURL = import.meta.env.DEV ? '/api' : (import.meta.env.VITE_API_URL ?? '/api')
+const apiBaseURL = resolveApiBaseUrl()
 
 const apiClient = axios.create({
   baseURL: apiBaseURL,
@@ -89,7 +90,7 @@ const unwrap = async <T>(config: AxiosRequestConfig) => {
 export const getErrorMessage = (error: unknown) => {
   if (axios.isAxiosError(error)) {
     if (!error.response) {
-      return 'Cannot reach the backend. Check that the API is running, the database is ready, and the browser origin is allowed.'
+      return `Cannot reach the backend at ${apiBaseURL}. Check that the API is running, the URL is correct, and the browser origin is allowed.`
     }
 
     const responseData = error.response?.data as
