@@ -1,0 +1,196 @@
+generator client {
+    provider = "prisma-client-js"
+}
+
+datasource db   {
+    provider =  "postgresql"
+    url = env("DATABASE_URL")
+}
+
+enum Role {
+    ADMIN
+    PM
+    DEVELOPER
+}
+
+enum ProjectStatus {
+    ACTIVE
+    ON_HOLD
+    COMPLETED
+}
+
+enum TaskStatus {
+    TO_DO
+    IN_PROGRESS
+    DONE
+    IN_REVIEW
+}
+
+enum TaskPriority {
+    LOW
+    MEDIUM
+    HIGH
+    CRITICAL
+}
+
+enum ActivityType {
+    TASK_STATUS_CHANGED
+}
+
+enum NotificationType {
+    TASK_ASSIGNED
+    TASK_REASSIGNED
+    TASK_IN_REVIEW
+    PROJECT_ASSIGNED
+    PROJECT_REASSIGNED
+    TASK_UPDATED
+    TASK_OVERDUE
+    DUE_DATE_SOON
+}
+
+enum EntityType {
+    TASK
+    PROJECT
+}
+
+model User {
+  id              String         @id @default(uuid())
+  name            String
+  email           String         @unique
+  passwordHash    String
+  role            Role
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  createdClients  Client[]
+  createdProjects Project[]      @relation("ProjectCreator")
+  assignedProjects Project[]     @relation("ProjectAssignee")
+  assignedTasks   Task[]         @relation("TaskAssignee")
+  createdTasks    Task[]         @relation("TaskCreator")
+  updatedTasks    Task[]         @relation("TaskUpdater")
+  activities      ActivityLog[]  @relation("ActivityActor")
+  notifications   Notification[]
+  sessions        Session[]
+
+  @@index([role])
+}
+
+model Client {
+  id           String    @id @default(uuid())
+  name         String
+  contactName  String?
+  contactEmail String?
+  createdById  String
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  createdBy    User      @relation(fields: [createdById], references: [id])
+  projects     Project[]
+
+  @@index([name])
+}
+
+model Project {
+  id                   String        @id @default(uuid())
+  clientId             String
+  name                 String
+  description          String?
+  category             String?
+  developerInstructions String?
+  status               ProjectStatus @default(ACTIVE)
+  createdById          String
+  assignedDeveloperId  String?
+  startDate            DateTime?
+  endDate              DateTime?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+  client               Client        @relation(fields: [clientId], references: [id])
+  createdBy            User          @relation("ProjectCreator", fields: [createdById], references: [id])
+  assignedDeveloper    User?         @relation("ProjectAssignee", fields: [assignedDeveloperId], references: [id])
+  tasks                Task[]
+  activities           ActivityLog[]
+
+  @@index([clientId])
+  @@index([createdById])
+  @@index([assignedDeveloperId])
+  @@index([createdById, status])
+}
+
+model Task {
+  id                  String       @id @default(uuid())
+  taskNumber          Int          @unique @default(autoincrement())
+  projectId           String
+  title               String
+  description         String?
+  assignedDeveloperId String?
+  status              TaskStatus   @default(TO_DO)
+  priority            TaskPriority @default(MEDIUM)
+  dueDate             DateTime?
+  isOverdue           Boolean      @default(false)
+  overdueFlaggedAt    DateTime?
+  createdById         String
+  updatedById         String?
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+  project             Project      @relation(fields: [projectId], references: [id])
+  assignedDeveloper   User?        @relation("TaskAssignee", fields: [assignedDeveloperId], references: [id])
+  createdBy           User         @relation("TaskCreator", fields: [createdById], references: [id])
+  updatedBy           User?        @relation("TaskUpdater", fields: [updatedById], references: [id])
+  activities          ActivityLog[]
+
+  @@index([projectId])
+  @@index([assignedDeveloperId])
+  @@index([projectId, status])
+  @@index([assignedDeveloperId, dueDate])
+  @@index([isOverdue])
+}
+
+model ActivityLog {
+  id                String       @id @default(uuid())
+  projectId         String
+  taskId            String
+  actorUserId       String
+  eventType         ActivityType
+  oldStatus         TaskStatus?
+  newStatus         TaskStatus?
+  actorNameSnapshot String
+  taskTitleSnapshot String
+  message           String
+  createdAt         DateTime     @default(now())
+  project           Project      @relation(fields: [projectId], references: [id])
+  task              Task         @relation(fields: [taskId], references: [id])
+  actor             User         @relation("ActivityActor", fields: [actorUserId], references: [id])
+
+  @@index([projectId, createdAt(sort: Desc)])
+  @@index([taskId, createdAt(sort: Desc)])
+  @@index([actorUserId, createdAt(sort: Desc)])
+}
+
+model Notification {
+  id              String           @id @default(uuid())
+  recipientUserId String
+  type            NotificationType
+  title           String
+  message         String
+  entityType      EntityType
+  entityId        String
+  isRead          Boolean          @default(false)
+  readAt          DateTime?
+  createdAt       DateTime         @default(now())
+  recipient       User             @relation(fields: [recipientUserId], references: [id])
+
+  @@index([recipientUserId, isRead, createdAt(sort: Desc)])
+}
+
+model Session {
+  id               String   @id @default(uuid())
+  userId           String
+  refreshTokenHash String   @unique
+  userAgent        String?
+  ipAddress        String?
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  createdAt        DateTime @default(now())
+  user             User     @relation(fields: [userId], references: [id])
+
+  @@index([userId, revokedAt, expiresAt])
+}
